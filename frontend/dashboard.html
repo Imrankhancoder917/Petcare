@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PetCare Connect Pro — Dashboard</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .reports-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.25rem; }
+    .no-results { text-align: center; padding: 3rem; color: #757575; }
+    .no-results .emoji { font-size: 3rem; }
+    .status-select { font-size: .82rem; padding: .25rem .5rem; border-radius: 6px; border: 1.5px solid #e0e0e0; cursor: pointer; }
+    .img-placeholder { width: 100%; height: 180px; background: #e8f5e9; display: flex; align-items: center; justify-content: center; font-size: 3rem; }
+  </style>
+</head>
+<body>
+  <div id="navbar-placeholder"></div>
+
+  <div class="page-header">
+    <h1>📋 Reports Dashboard</h1>
+    <p>Browse and manage all animal welfare reports</p>
+  </div>
+
+  <div class="container">
+    <!-- Filters -->
+    <div class="filters-bar">
+      <div class="form-group">
+        <label>Status</label>
+        <select id="filter-status" onchange="applyFilters()">
+          <option value="">All Statuses</option>
+          <option value="OPEN">Open</option>
+          <option value="ASSIGNED">Assigned</option>
+          <option value="IN_PROGRESS">In Progress</option>
+          <option value="RESOLVED">Resolved</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Urgency</label>
+        <select id="filter-urgency" onchange="applyFilters()">
+          <option value="">All</option>
+          <option value="HIGH">HIGH</option>
+          <option value="LOW">LOW</option>
+        </select>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="loadReports()">🔄 Refresh</button>
+    </div>
+
+    <!-- Stats bar -->
+    <div class="grid-4" id="stats-row" style="margin-bottom:1.25rem"></div>
+
+    <!-- Report cards -->
+    <div id="reports-container" class="reports-grid"></div>
+    <div id="loading" class="text-center mt-3" style="display:none">Loading…</div>
+  </div>
+
+  <!-- Accept / Status Modal -->
+  <div id="modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2000;align-items:center;justify-content:center">
+    <div class="card" style="width:360px;max-width:95vw">
+      <h3 id="modal-title" style="margin-bottom:.75rem"></h3>
+      <p id="modal-body" style="color:#555;font-size:.9rem;margin-bottom:1rem"></p>
+      <div id="modal-actions" class="flex" style="gap:.5rem;flex-wrap:wrap"></div>
+      <button class="btn btn-outline btn-sm mt-2" onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+
+  <div id="toast-container"></div>
+
+  <script src="script.js"></script>
+  <script>
+    requireAuth();
+    document.getElementById("navbar-placeholder").innerHTML = buildNavbar("dashboard.html");
+
+    let allReports = [];
+
+    async function loadReports() {
+      document.getElementById("loading").style.display = "";
+      document.getElementById("reports-container").innerHTML = "";
+
+      const status  = document.getElementById("filter-status").value;
+      const urgency = document.getElementById("filter-urgency").value;
+      let path = "/reports";
+      const params = [];
+      if (status)  params.push(`status=${status}`);
+      if (urgency) params.push(`urgency=${urgency}`);
+      if (params.length) path += "?" + params.join("&");
+
+      const res = await apiFetch(path);
+      document.getElementById("loading").style.display = "none";
+      if (!res || !res.ok) {
+        showToast(res ? res.data.error : "Failed to load", "error");
+        return;
+      }
+      allReports = res.data;
+      renderReports(allReports);
+      renderStats(allReports);
+    }
+
+    function applyFilters() { loadReports(); }
+
+    function renderStats(reports) {
+      const total    = reports.length;
+      const resolved = reports.filter(r => r.status === "RESOLVED").length;
+      const high     = reports.filter(r => r.urgency === "HIGH").length;
+      const open     = reports.filter(r => r.status === "OPEN").length;
+      document.getElementById("stats-row").innerHTML = `
+        <div class="stat-box"><div class="stat-value">${total}</div><div class="stat-label">Total Reports</div></div>
+        <div class="stat-box"><div class="stat-value">${open}</div><div class="stat-label">Open</div></div>
+        <div class="stat-box"><div class="stat-value" style="color:#c62828">${high}</div><div class="stat-label">High Urgency</div></div>
+        <div class="stat-box"><div class="stat-value" style="color:#4caf50">${resolved}</div><div class="stat-label">Resolved</div></div>
+      `;
+    }
+
+    function renderReports(reports) {
+      const container = document.getElementById("reports-container");
+      if (!reports.length) {
+        container.innerHTML = `<div class="no-results" style="grid-column:1/-1"><div class="emoji">🔍</div><p>No reports found.</p></div>`;
+        return;
+      }
+      container.innerHTML = reports.map(r => `
+        <div class="report-card">
+          ${r.image_url
+            ? `<img src="${API_BASE}${r.image_url}" alt="report image" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+            : ``}
+          <div class="img-placeholder" ${r.image_url ? 'style="display:none"' : ''}>🐾</div>
+          <div class="report-body">
+            <h3>${escHtml(r.title)}</h3>
+            <p>${escHtml(r.description.substring(0, 100))}${r.description.length > 100 ? "…" : ""}</p>
+            <div class="report-meta">
+              ${urgencyBadge(r.urgency)}
+              ${statusBadge(r.status)}
+              <small class="text-muted">${fmtDate(r.created_at)}</small>
+            </div>
+            <p class="text-muted mt-1" style="font-size:.8rem">By: ${escHtml(r.reporter_name)}</p>
+            ${r.lat && r.lng ? `<p class="text-muted" style="font-size:.78rem">📍 ${r.lat}, ${r.lng}</p>` : ''}
+            <div class="flex mt-2" style="flex-wrap:wrap;gap:.4rem">
+              ${actionButtons(r)}
+            </div>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function actionButtons(r) {
+      const role = getRole();
+      let btns = "";
+      if (role === "volunteer" && r.status === "OPEN") {
+        btns += `<button class="btn btn-secondary btn-sm" onclick="acceptCase(${r.id}, '${escHtml(r.title)}')">🦺 Accept</button>`;
+      }
+      if ((role === "volunteer" || role === "admin") && ["ASSIGNED", "IN_PROGRESS"].includes(r.status)) {
+        const next = r.status === "ASSIGNED" ? "IN_PROGRESS" : "RESOLVED";
+        btns += `<button class="btn btn-primary btn-sm" onclick="updateStatus(${r.id}, '${next}')">▶ Mark ${next.replace("_"," ")}</button>`;
+      }
+      if (role === "admin") {
+        btns += `<button class="btn btn-outline btn-sm" onclick="openStatusModal(${r.id}, '${r.status}')">✏ Status</button>`;
+      }
+      return btns;
+    }
+
+    async function acceptCase(reportId, title) {
+      const res = await apiFetch(`/assign/${reportId}`, { method: "POST" });
+      if (res && res.ok) {
+        showToast("Case accepted!", "success");
+        loadReports();
+      } else {
+        showToast(res ? res.data.error : "Failed", "error");
+      }
+    }
+
+    async function updateStatus(reportId, status) {
+      const res = await apiFetch(`/update-status/${reportId}`, {
+        method: "PUT",
+        body: JSON.stringify({ status }),
+      });
+      if (res && res.ok) {
+        showToast(`Status updated to ${status}`, "success");
+        loadReports();
+      } else {
+        showToast(res ? res.data.error : "Failed", "error");
+      }
+    }
+
+    function openStatusModal(reportId, currentStatus) {
+      const statuses = ["OPEN","ASSIGNED","IN_PROGRESS","RESOLVED"];
+      document.getElementById("modal-title").textContent = "Update Report Status";
+      document.getElementById("modal-body").textContent  = `Current: ${currentStatus}`;
+      document.getElementById("modal-actions").innerHTML = statuses.map(s =>
+        `<button class="btn btn-sm ${s === currentStatus ? 'btn-primary' : 'btn-outline'}"
+          onclick="updateStatus(${reportId},'${s}');closeModal()">${s.replace("_"," ")}</button>`
+      ).join("");
+      document.getElementById("modal-overlay").style.display = "flex";
+    }
+
+    function closeModal() {
+      document.getElementById("modal-overlay").style.display = "none";
+    }
+
+    function escHtml(str) {
+      return String(str)
+        .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+        .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+    }
+
+    loadReports();
+  </script>
+</body>
+</html>

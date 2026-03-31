@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Environment variables
+backend/.env
+
+# Uploaded files (keep folder, ignore contents)
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Editor / OS
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+Thumbs.db
+
+# Logs
+*.log
