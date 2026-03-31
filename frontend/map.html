@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PetCare Connect Pro — Map</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    #map-wrapper { padding: 1rem; }
+    #map { width: 100%; height: calc(100vh - 140px); border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+    .map-legend {
+      position: absolute; bottom: 2.5rem; left: 50%;
+      transform: translateX(-50%);
+      background: rgba(255,255,255,.95);
+      border-radius: 8px;
+      padding: .6rem 1.2rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,.2);
+      display: flex; gap: 1.2rem; align-items: center;
+      z-index: 10; font-size: .85rem;
+    }
+    .legend-dot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; margin-right: .3rem; }
+    #map-wrapper { position: relative; }
+  </style>
+</head>
+<body>
+  <div id="navbar-placeholder"></div>
+
+  <div id="map-wrapper">
+    <div id="map"><p style="padding:2rem;text-align:center">Loading map…</p></div>
+    <div class="map-legend">
+      <span><span class="legend-dot" style="background:#e53935"></span>HIGH urgency</span>
+      <span><span class="legend-dot" style="background:#fdd835"></span>LOW urgency</span>
+      <span><span class="legend-dot" style="background:#43a047"></span>RESOLVED</span>
+    </div>
+  </div>
+
+  <div id="toast-container"></div>
+
+  <script src="script.js"></script>
+  <script>
+    requireAuth();
+    document.getElementById("navbar-placeholder").innerHTML = buildNavbar("map.html");
+
+    let map, infoWindow;
+    const markers = [];
+
+    // Called by Google Maps callback
+    window.initMap = async function() {
+      map = new google.maps.Map(document.getElementById("map"), {
+        center: { lat: 20.5937, lng: 78.9629 },  // India centre
+        zoom: 5,
+        mapTypeControl: false,
+        styles: [{ featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] }],
+      });
+      infoWindow = new google.maps.InfoWindow();
+      await loadMapReports();
+    };
+
+    // Fallback when no API key is set
+    window.gm_authFailure = function() {
+      document.getElementById("map").innerHTML =
+        `<div style="padding:2rem;text-align:center;color:#c62828">
+          <b>Google Maps API key not configured.</b><br>
+          Add your API key to map.html. Reports are still visible in the Dashboard.
+        </div>`;
+    };
+
+    async function loadMapReports() {
+      const res = await apiFetch("/reports");
+      if (!res || !res.ok) { showToast("Failed to load reports", "error"); return; }
+
+      // Clear existing markers
+      markers.forEach(m => m.setMap(null));
+      markers.length = 0;
+
+      const reports = res.data.filter(r => r.lat && r.lng);
+      if (!reports.length) { showToast("No geo-located reports found", "info"); return; }
+
+      const bounds = new google.maps.LatLngBounds();
+
+      reports.forEach(r => {
+        const pos = { lat: parseFloat(r.lat), lng: parseFloat(r.lng) };
+
+        let markerColor = "#fdd835"; // LOW
+        if (r.status === "RESOLVED") markerColor = "#43a047";
+        else if (r.urgency === "HIGH") markerColor = "#e53935";
+
+        const marker = new google.maps.Marker({
+          position: pos,
+          map,
+          title: r.title,
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 10,
+            fillColor: markerColor,
+            fillOpacity: .9,
+            strokeColor: "#fff",
+            strokeWeight: 2,
+          },
+        });
+
+        marker.addListener("click", () => {
+          const content = `
+            <div style="max-width:260px;font-family:sans-serif">
+              ${r.image_url ? `<img src="${API_BASE}${r.image_url}" style="width:100%;border-radius:6px;margin-bottom:.5rem" />` : ""}
+              <b>${r.title}</b><br>
+              <span style="font-size:.85em;color:#555">${r.description.substring(0, 120)}${r.description.length > 120 ? "…" : ""}</span><br><br>
+              <span style="font-size:.82em">Urgency: <b style="color:${r.urgency==='HIGH'?'#c62828':'#827717'}">${r.urgency}</b></span><br>
+              <span style="font-size:.82em">Status: <b>${r.status.replace("_"," ")}</b></span><br>
+              <span style="font-size:.78em;color:#888">${fmtDate(r.created_at)}</span>
+            </div>`;
+          infoWindow.setContent(content);
+          infoWindow.open(map, marker);
+        });
+
+        markers.push(marker);
+        bounds.extend(pos);
+      });
+
+      if (reports.length > 0) map.fitBounds(bounds);
+    }
+  </script>
+
+  <!--
+    Replace YOUR_GOOGLE_MAPS_API_KEY below with a valid key.
+    Get one at https://console.cloud.google.com/
+    Enable "Maps JavaScript API" for your project.
+  -->
+  <script
+    src="https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY&callback=initMap"
+    async defer
+    onerror="document.getElementById('map').innerHTML='<div style=\'padding:2rem;text-align:center;color:#c62828\'>Could not load Google Maps.<br>Check your API key and internet connection.</div>'"
+  ></script>
+</body>
+</html>

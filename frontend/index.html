@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PetCare Connect Pro — Home</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .hero {
+      background: linear-gradient(135deg, #1b5e20 0%, #4caf50 60%, #ff8f00 100%);
+      color: #fff;
+      padding: 4rem 1rem 3rem;
+      text-align: center;
+    }
+    .hero h1 { font-size: 2.6rem; margin-bottom: .6rem; }
+    .hero p  { font-size: 1.15rem; opacity: .9; max-width: 560px; margin: 0 auto 1.8rem; }
+    .hero-btns { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+    .feature-icon { font-size: 2.5rem; margin-bottom: .5rem; }
+    .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.25rem; margin-top: 2rem; }
+    .feature-card { background: #fff; border-radius: 10px; padding: 1.5rem; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+    .feature-card h3 { margin-bottom: .4rem; }
+    .feature-card p { color: #757575; font-size: .9rem; }
+    .report-form-section { background: #fff; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,.08); padding: 2rem; margin-top: 2rem; }
+    .report-form-section h2 { margin-bottom: 1.2rem; color: #2e7d32; }
+    .coord-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    #report-alert { display: none; }
+  </style>
+</head>
+<body>
+  <div id="navbar-placeholder"></div>
+
+  <section class="hero">
+    <h1>🐾 PetCare Connect Pro</h1>
+    <p>Report injured or stray animals. Volunteers respond. Lives saved.</p>
+    <div class="hero-btns">
+      <a href="dashboard.html" class="btn btn-primary">View Dashboard</a>
+      <a href="map.html"       class="btn btn-secondary">Open Map</a>
+      <a href="login.html"     class="btn btn-outline" id="cta-login" style="color:#fff;border-color:#fff">Get Started</a>
+    </div>
+  </section>
+
+  <div class="container">
+    <!-- Features -->
+    <h2 class="text-center mt-3">Why PetCare Connect Pro?</h2>
+    <div class="features-grid">
+      <div class="feature-card"><div class="feature-icon">📍</div><h3>Location Mapping</h3><p>Pin exact locations on Google Maps so volunteers can find animals fast.</p></div>
+      <div class="feature-card"><div class="feature-icon">🤖</div><h3>AI Urgency Detection</h3><p>ML model auto-classifies reports as HIGH or LOW urgency in real-time.</p></div>
+      <div class="feature-card"><div class="feature-icon">🦺</div><h3>Volunteer Network</h3><p>Certified volunteers accept and respond to cases near them.</p></div>
+      <div class="feature-card"><div class="feature-icon">📊</div><h3>Analytics Dashboard</h3><p>Track resolution rates, urgency trends, and system health.</p></div>
+      <div class="feature-card"><div class="feature-icon">🔔</div><h3>Live Notifications</h3><p>Volunteers are instantly notified of new high-urgency cases.</p></div>
+      <div class="feature-card"><div class="feature-icon">🛡️</div><h3>Secure &amp; Role-Based</h3><p>JWT authentication with User, Volunteer, and Admin roles.</p></div>
+    </div>
+
+    <!-- Quick Report Form (only shown when logged in) -->
+    <div class="report-form-section" id="quick-report" style="display:none">
+      <h2>📝 Submit a Report</h2>
+      <div id="report-alert" class="alert"></div>
+      <form id="report-form" onsubmit="submitReport(event)" enctype="multipart/form-data">
+        <div class="form-group">
+          <label for="r-title">Title *</label>
+          <input type="text" id="r-title" placeholder="e.g. Injured dog near highway" required maxlength="255" />
+        </div>
+        <div class="form-group">
+          <label for="r-desc">Description *</label>
+          <textarea id="r-desc" placeholder="Describe the situation in detail…" required></textarea>
+        </div>
+        <div class="coord-row">
+          <div class="form-group">
+            <label for="r-lat">Latitude</label>
+            <input type="number" id="r-lat" placeholder="e.g. 28.6139" step="any" />
+          </div>
+          <div class="form-group">
+            <label for="r-lng">Longitude</label>
+            <input type="number" id="r-lng" placeholder="e.g. 77.2090" step="any" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="r-image">Photo (optional)</label>
+          <input type="file" id="r-image" accept="image/*" />
+        </div>
+        <div class="flex mt-2">
+          <button type="button" class="btn btn-outline" onclick="useMyLocation()">📍 Use My Location</button>
+          <button type="submit" class="btn btn-primary" id="submit-btn">Submit Report</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Notification toast container -->
+  <div id="toast-container"></div>
+
+  <script src="script.js"></script>
+  <!-- Socket.IO client -->
+  <script src="http://localhost:5000/socket.io/socket.io.js" onerror="console.warn('SocketIO not available')"></script>
+  <script>
+    document.getElementById("navbar-placeholder").innerHTML = buildNavbar("index.html");
+
+    if (isLoggedIn()) {
+      document.getElementById("quick-report").style.display = "";
+      document.getElementById("cta-login").style.display = "none";
+
+      // Connect to SocketIO for notifications
+      if (typeof io !== "undefined") {
+        const socket = io(API_BASE);
+        socket.on("report_notification", (data) => {
+          showToast(`🔔 New report: ${data.title} — ${data.urgency} urgency`, data.urgency === "HIGH" ? "error" : "success");
+        });
+      }
+    }
+
+    function useMyLocation() {
+      if (!navigator.geolocation) {
+        showToast("Geolocation not supported", "error");
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          document.getElementById("r-lat").value = pos.coords.latitude.toFixed(6);
+          document.getElementById("r-lng").value = pos.coords.longitude.toFixed(6);
+          showToast("Location captured!", "success");
+        },
+        () => showToast("Could not get location", "error")
+      );
+    }
+
+    async function submitReport(e) {
+      e.preventDefault();
+      const btn  = document.getElementById("submit-btn");
+      const alertEl = document.getElementById("report-alert");
+      btn.disabled = true; btn.textContent = "Submitting…";
+      alertEl.style.display = "none";
+
+      const fd = new FormData();
+      fd.append("title",       document.getElementById("r-title").value.trim());
+      fd.append("description", document.getElementById("r-desc").value.trim());
+      const lat = document.getElementById("r-lat").value;
+      const lng = document.getElementById("r-lng").value;
+      if (lat) fd.append("lat", lat);
+      if (lng) fd.append("lng", lng);
+      const imgFile = document.getElementById("r-image").files[0];
+      if (imgFile) fd.append("image", imgFile);
+
+      try {
+        const res = await apiFetch("/report", { method: "POST", body: fd });
+        if (res && res.ok) {
+          alertEl.className = "alert alert-success";
+          alertEl.textContent = `✅ Report submitted! Urgency detected: ${res.data.urgency}`;
+          alertEl.style.display = "";
+          document.getElementById("report-form").reset();
+
+          // Broadcast via SocketIO if available
+          if (typeof io !== "undefined") {
+            const socket = io(API_BASE);
+            socket.emit("new_report", { title: fd.get("title"), urgency: res.data.urgency });
+          }
+        } else {
+          alertEl.className = "alert alert-error";
+          alertEl.textContent = res ? (res.data.error || "Submission failed") : "Network error";
+          alertEl.style.display = "";
+        }
+      } catch (err) {
+        alertEl.className = "alert alert-error";
+        alertEl.textContent = "Network error — is the backend running?";
+        alertEl.style.display = "";
+      } finally {
+        btn.disabled = false; btn.textContent = "Submit Report";
+      }
+    }
+  </script>
+</body>
+</html>

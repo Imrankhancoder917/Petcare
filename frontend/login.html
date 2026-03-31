@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PetCare Connect Pro — Login</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="auth-wrapper">
+    <div class="auth-card">
+      <h1>🐾 PetCare Connect Pro</h1>
+      <p class="subtitle">Helping animals in need</p>
+
+      <div class="tab-switch">
+        <button id="tab-login"  class="active" onclick="switchTab('login')">Login</button>
+        <button id="tab-signup"               onclick="switchTab('signup')">Sign Up</button>
+      </div>
+
+      <div id="alert-box"></div>
+
+      <!-- Login Form -->
+      <form id="login-form" onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <label for="login-email">Email</label>
+          <input type="email" id="login-email" placeholder="you@example.com" required />
+        </div>
+        <div class="form-group">
+          <label for="login-password">Password</label>
+          <input type="password" id="login-password" placeholder="••••••••" required />
+        </div>
+        <button type="submit" class="btn btn-primary btn-full mt-2" id="login-btn">Login</button>
+        <p class="text-center text-muted mt-2" style="font-size:.82rem;">
+          Demo admin: <b>admin@petcare.com</b> / <b>Admin@123</b>
+        </p>
+      </form>
+
+      <!-- Signup Form -->
+      <form id="signup-form" style="display:none" onsubmit="handleSignup(event)">
+        <div class="form-group">
+          <label for="signup-name">Full Name</label>
+          <input type="text" id="signup-name" placeholder="John Doe" required />
+        </div>
+        <div class="form-group">
+          <label for="signup-email">Email</label>
+          <input type="email" id="signup-email" placeholder="you@example.com" required />
+        </div>
+        <div class="form-group">
+          <label for="signup-password">Password (min 6 chars)</label>
+          <input type="password" id="signup-password" placeholder="••••••••" required minlength="6" />
+        </div>
+        <div class="form-group">
+          <label for="signup-role">Role</label>
+          <select id="signup-role">
+            <option value="user">User — report cases</option>
+            <option value="volunteer">Volunteer — rescue animals</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full mt-2" id="signup-btn">Create Account</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+  <script>
+    // Redirect if already logged in
+    if (isLoggedIn()) window.location.href = "index.html";
+
+    function switchTab(tab) {
+      const isLogin = tab === "login";
+      document.getElementById("login-form").style.display  = isLogin ? "" : "none";
+      document.getElementById("signup-form").style.display = isLogin ? "none" : "";
+      document.getElementById("tab-login").classList.toggle("active",  isLogin);
+      document.getElementById("tab-signup").classList.toggle("active", !isLogin);
+      document.getElementById("alert-box").innerHTML = "";
+    }
+
+    function showAlert(msg, type = "error") {
+      document.getElementById("alert-box").innerHTML =
+        `<div class="alert alert-${type}">${msg}</div>`;
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const btn = document.getElementById("login-btn");
+      btn.disabled = true; btn.textContent = "Logging in…";
+      const email    = document.getElementById("login-email").value.trim();
+      const password = document.getElementById("login-password").value;
+      try {
+        const res = await apiFetch("/login", {
+          method: "POST",
+          body: JSON.stringify({ email, password }),
+        });
+        if (res && res.ok) {
+          saveAuth(res.data.token, res.data.role, res.data.name);
+          window.location.href = "index.html";
+        } else {
+          showAlert(res ? (res.data.error || "Login failed") : "Network error");
+        }
+      } catch (err) {
+        showAlert("Network error — is the backend running?");
+      } finally {
+        btn.disabled = false; btn.textContent = "Login";
+      }
+    }
+
+    async function handleSignup(e) {
+      e.preventDefault();
+      const btn = document.getElementById("signup-btn");
+      btn.disabled = true; btn.textContent = "Creating…";
+      const name     = document.getElementById("signup-name").value.trim();
+      const email    = document.getElementById("signup-email").value.trim();
+      const password = document.getElementById("signup-password").value;
+      const role     = document.getElementById("signup-role").value;
+      try {
+        const res = await apiFetch("/signup", {
+          method: "POST",
+          body: JSON.stringify({ name, email, password, role }),
+        });
+        if (res && res.ok) {
+          saveAuth(res.data.token, res.data.role, res.data.name);
+          window.location.href = "index.html";
+        } else {
+          showAlert(res ? (res.data.error || "Signup failed") : "Network error");
+        }
+      } catch (err) {
+        showAlert("Network error — is the backend running?");
+      } finally {
+        btn.disabled = false; btn.textContent = "Create Account";
+      }
+    }
+  </script>
+</body>
+</html>
